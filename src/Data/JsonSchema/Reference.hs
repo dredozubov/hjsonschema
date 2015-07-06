@@ -15,6 +15,7 @@ import           Data.Monoid
 import           Data.Text            (Text)
 import qualified Data.Text            as T
 import           Network.HTTP.Client
+import           Network.URI
 import           Prelude              hiding (foldr)
 
 combineIdAndRef :: Text -> Text -> Text
@@ -24,19 +25,11 @@ combineIdAndRef a b
   | T.last a == '#' && T.head b == '#' = a <> T.tail b
   | otherwise                          = a <> b
 
-combineIds :: Text -> Text -> Text
-combineIds a b
-  | b == "#" || b == ""                = a
-  | "://" `T.isInfixOf` b              = b
-  | T.length a < 1 || T.length b < 1   = a <> b
-  | T.last a == '#' && T.head b == '#' = a <> T.tail b
-  | otherwise                          = a <> b
-
-newResolutionScope :: Text -> HashMap Text Value -> Text
-newResolutionScope t o =
-  case H.lookup "id" o of
-    Just (String idKeyword) -> t `combineIds` idKeyword
-    _                       -> t
+newResolutionScope :: URI -> HashMap URI Value -> URI
+newResolutionScope t o = undefined
+  -- case H.lookup "id" o of
+  --   Just (String idKeyword) -> t `combineIds` idKeyword
+  --   _                       -> t
 
 refAndPointer :: Text -> Maybe (Text, Text)
 refAndPointer val = getParts $ T.splitOn "#" val

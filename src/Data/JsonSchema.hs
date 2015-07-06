@@ -29,6 +29,7 @@ import           Prelude                    hiding (foldr)
 draft4 :: Spec
 draft4 = Spec $ H.fromList
   [ ("$ref"                , (ref                 , noEm))
+  , ("$schema"             , (schema              , noEm)
   , ("multipleOf"          , (multipleOf          , noEm))
   , ("maximum"             , (maximumVal          , noEm))
   , ("minimum"             , (minimumVal          , noEm))
