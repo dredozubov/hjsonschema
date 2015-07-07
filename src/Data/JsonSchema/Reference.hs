@@ -1,7 +1,14 @@
--- | TODO: The code handling resolution scope updates
--- is hacky and needs improvement.
+{-# LANGUAGE ViewPatterns #-}
 
-module Data.JsonSchema.Reference where
+module Data.JsonSchema.Reference
+       ( Reference(..)
+       , mkAbsoluteRef
+       , mkRelativeRef
+       , newResolutionScope
+       , refAndPointer
+       , fetchRef
+       , safeGet
+       ) where
 
 import           Control.Applicative
 import           Control.Arrow
@@ -11,41 +18,49 @@ import           Data.Aeson
 import           Data.ByteString.Lazy (ByteString)
 import           Data.HashMap.Strict  (HashMap)
 import qualified Data.HashMap.Strict  as H
-import           Data.Monoid
 import           Data.Text            (Text)
 import qualified Data.Text            as T
 import           Network.HTTP.Client
+import           Network.URI
 import           Prelude              hiding (foldr)
 
-combineIdAndRef :: Text -> Text -> Text
-combineIdAndRef a b
-  | "://" `T.isInfixOf` b              = b
-  | T.length a < 1 || T.length b < 1   = a <> b
-  | T.last a == '#' && T.head b == '#' = a <> T.tail b
-  | otherwise                          = a <> b
+-- | Resolved reference from supplied ref.
+-- Don't use it directly, smart constructor must be used
+data Reference = Reference URI
 
-combineIds :: Text -> Text -> Text
-combineIds a b
-  | b == "#" || b == ""                = a
-  | "://" `T.isInfixOf` b              = b
-  | T.length a < 1 || T.length b < 1   = a <> b
-  | T.last a == '#' && T.head b == '#' = a <> T.tail b
-  | otherwise                          = a <> b
+instance Show Reference where
+  show (Reference uri) = show uri
 
-newResolutionScope :: Text -> HashMap Text Value -> Text
-newResolutionScope t o =
-  case H.lookup "id" o of
-    Just (String idKeyword) -> t `combineIds` idKeyword
-    _                       -> t
+mkAbsoluteRef :: Text -> Maybe Reference
+mkAbsoluteRef = fmap Reference . parseAbsoluteURI . T.unpack
 
-refAndPointer :: Text -> Maybe (Text, Text)
-refAndPointer val = getParts $ T.splitOn "#" val
-  where
-    getParts :: [Text] -> Maybe (Text, Text)
-    getParts []    = Just ("","")
-    getParts [x]   = Just (x,"")
-    getParts [x,y] = Just (x,y)
-    getParts _     = Nothing
+mkRelativeRef :: Reference -> Text -> Maybe Reference
+mkRelativeRef (Reference base) t@(T.unpack -> str)
+  | isURIReference str = let parsed = parseRelativeReference str
+                             merged = (`relativeTo` base) <$> parsed
+                         in Reference <$> merged
+  | isAbsoluteURI  str = mkAbsoluteRef t
+  | otherwise          = Nothing
+
+newResolutionScope :: Text -> HashMap Text Value -> Maybe Reference
+newResolutionScope t (H.lookup "id" -> id') =
+  case id' of
+    Just (String idKeyword) -> flip mkRelativeRef idKeyword =<< parent
+    _                       -> parent
+  where parent = mkAbsoluteRef t
+
+-- | Split 'URI' 'Reference' by the fragment separator.
+refAndPointer :: Reference -> Maybe (Text, Text)
+-- FIXME: still hellish enough.
+refAndPointer (Reference uri) = getParts
+                              . T.splitOn "#"
+                              . T.pack
+                              . show $ uri
+  where getParts :: [Text] -> Maybe (Text, Text)
+        getParts []    = Just ("","")
+        getParts [x]   = Just (x,"")
+        getParts [x,y] = Just (x,y)
+        getParts _     = Nothing
 
 fetchRef :: Text -> IO (Either Text (HashMap Text Value))
 fetchRef t = do
